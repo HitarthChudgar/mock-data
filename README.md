@@ -1,6 +1,8 @@
 # Payload
 
-A Figma plugin that populates designs from structured JSON. Paste data, bind text layers or a repeating row, then Generate when the JSON changes.
+A Figma plugin that populates designs from structured JSON. Paste data or pick a sample, map text layers, then generate repeating rows. Generate again when the JSON changes.
+
+Mappings are stored on the Figma nodes, so the file remembers them. The plugin does not use the network.
 
 ## Install
 
@@ -13,23 +15,13 @@ In Figma: **Plugins → Development → Import plugin from manifest…** and cho
 
 `npm run watch` rebuilds as you edit.
 
-## Demo
+## Usage
 
-1. Create one Auto Layout row with text layers named **Firm**, **Ownership**, and **Change**.
-2. Open Payload and choose **Institutions**, or paste investor JSON.
-3. Select the row. Payload auto-maps child layers to `investors[]`.
-4. Click **Generate rows**.
-5. Edit a value in the JSON (or paste an updated payload).
-6. Click **Generate** again. Existing rows update; extras are added or removed.
+1. Create one Auto Layout row or card with the text layers you want filled.
+2. Open Payload and paste JSON, or choose a sample.
+3. Select the row. **Auto-map** matches layers to fields in the first array it finds (left to right, top to bottom). Layer names are not required.
+4. Review **Identified mappings** in the Layer / Field table.
+5. Click **Generate rows**.
+6. Edit the JSON (or paste an updated payload) and click **Generate** again. Existing rows update; extras are added or removed.
 
-Mappings are stored on the Figma nodes, so the file remembers them.
-
-## Samples
-
-Investor-relations fixtures, each with **Normal**, **Long**, and **Missing** modes:
-
-- Institutions
-- Companies
-- Contacts
-- Holdings
-- Events
+**Clear content** empties the pasted or sample JSON. It does not remove mappings on the canvas.

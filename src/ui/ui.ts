@@ -8,6 +8,7 @@ import {
   type JsonTreeNode,
 } from "../shared/json";
 import { SAMPLE_OPTIONS, getSampleText } from "../shared/samples";
+import { paintIcons, type LucideName } from "./icons";
 
 const editor = $<HTMLTextAreaElement>("editor");
 const errorEl = $("error");
@@ -60,6 +61,25 @@ function currentArrayPath(): string | null {
   return null;
 }
 
+function setEmpty(el: HTMLElement, icon: LucideName, title: string | null, hint: string): void {
+  const heading = title ? `<strong>${escapeHtml(title)}</strong>` : "";
+  el.innerHTML = `
+    <div class="empty">
+      <i data-lucide="${icon}"></i>
+      <div class="empty-copy">${heading}<p>${escapeHtml(hint)}</p></div>
+    </div>
+  `;
+  paintIcons(el);
+}
+
+function refreshView(): void {
+  if (selection) renderSelection(selection);
+  else {
+    renderTree();
+    updateActions();
+  }
+}
+
 function applyJson(text: string, persist: boolean): void {
   if (editor.value !== text) editor.value = text;
   if (!text.trim()) {
@@ -68,10 +88,10 @@ function applyJson(text: string, persist: boolean): void {
     editor.classList.remove("invalid");
     errorEl.hidden = true;
     errorEl.textContent = "";
-    summaryEl.textContent = "";
-    treeEl.innerHTML = "";
+    summaryEl.textContent = "Paste or pick a sample";
+    summaryEl.classList.add("hint");
     if (persist) post({ type: "set-json", json: "" });
-    updateActions();
+    refreshView();
     return;
   }
   const parsed = parseJsonText(text);
@@ -81,8 +101,8 @@ function applyJson(text: string, persist: boolean): void {
     errorEl.hidden = false;
     errorEl.textContent = parsed.error;
     summaryEl.textContent = "";
-    treeEl.innerHTML = "";
-    updateActions();
+    summaryEl.classList.remove("hint");
+    refreshView();
     return;
   }
   data = parsed.data;
@@ -90,14 +110,21 @@ function applyJson(text: string, persist: boolean): void {
   errorEl.hidden = true;
   errorEl.textContent = "";
   summaryEl.textContent = summarizeJson(parsed.data);
+  summaryEl.classList.remove("hint");
   if (persist) post({ type: "set-json", json: text });
-  renderTree();
-  updateActions();
+  refreshView();
 }
 
 function renderTree(): void {
   treeEl.innerHTML = "";
-  if (data == null) return;
+  if (data == null) {
+    if (editor.classList.contains("invalid")) {
+      setEmpty(treeEl, "circle-alert", "Can’t preview", "Fix the JSON above.");
+    } else {
+      setEmpty(treeEl, "braces", "No content yet", "Paste JSON or pick a sample.");
+    }
+    return;
+  }
   const root = buildTree(data);
   const nodes = root.kind === "object" ? root.children : [root];
   for (const node of nodes) treeEl.appendChild(renderNode(node, 0));
@@ -177,7 +204,7 @@ function renderNode(node: JsonTreeNode, depth: number): HTMLElement {
   if (!closed && node.kind === "array" && node.children.length > 0) {
     const records: JsonTreeNode = {
       path: `${node.path}#records`,
-      key: "records",
+      key: "items",
       kind: "object",
       valueType: "object",
       preview: "",
@@ -232,28 +259,52 @@ function onTreePick(node: JsonTreeNode): void {
   }
 }
 
+function fieldLabel(path: string): string {
+  return path.replace(/\[\]/g, "").split(".").filter(Boolean).pop() ?? path;
+}
+
 function renderSelection(next: SelectionInfo, options: { mapped?: boolean } = {}): void {
   selection = next;
-  if (next.empty) {
-    selEl.innerHTML = "Select a text layer or a row";
-  } else if (next.nodeType === "text") {
-    const bound = next.boundPath ? ` · <strong>${escapeHtml(next.boundPath)}</strong>` : " · click a field to bind";
-    selEl.innerHTML = `Text <strong>${escapeHtml(next.name)}</strong>${bound}`;
-  } else if (next.isInstance) {
-    selEl.innerHTML = `Generated row · select the first row, then Generate`;
-  } else if (next.canRepeat) {
-    const count = next.mappings.length || next.textLayers.length;
-    selEl.innerHTML = `Identified mappings · <strong>${count}</strong>`;
-  } else {
-    selEl.innerHTML = `${escapeHtml(next.type)} <strong>${escapeHtml(next.name)}</strong>`;
-  }
-
   mapsEl.classList.remove("just-mapped");
   mapsEl.innerHTML = "";
+
+  if (next.empty) {
+    selEl.innerHTML = "No selection";
+    if (!data) setEmpty(mapsEl, "mouse-pointer-2", null, "Add content, then select a row.");
+    else setEmpty(mapsEl, "mouse-pointer-2", null, "Select a row to fill.");
+  } else if (next.nodeType === "text") {
+    selEl.innerHTML = `Selected <strong>${escapeHtml(next.name)}</strong>`;
+    if (next.boundPath) {
+      selEl.innerHTML = `<strong>${escapeHtml(next.name)}</strong> · ${escapeHtml(fieldLabel(next.boundPath))}`;
+      setEmpty(mapsEl, "rows-3", null, "Select the parent row to fill a list.");
+    } else if (!data) {
+      setEmpty(mapsEl, "type", null, "Add content, then click a field.");
+    } else {
+      setEmpty(mapsEl, "type", null, "Click a field to fill this layer.");
+    }
+  } else if (next.isInstance) {
+    selEl.innerHTML = "Generated row";
+    setEmpty(mapsEl, "copy", null, "Select the original row to update all.");
+  } else if (next.canRepeat) {
+    const count = next.mappings.length || next.textLayers.length;
+    if (next.mappings.length > 0) {
+      selEl.innerHTML = `Identified mappings · <strong>${count}</strong>`;
+    } else if (!data) {
+      selEl.innerHTML = "Row selected";
+      setEmpty(mapsEl, "wand-sparkles", null, "Add content, then Auto-map.");
+    } else {
+      selEl.innerHTML = "Ready to map";
+      setEmpty(mapsEl, "wand-sparkles", null, "Auto-map matches layers to fields.");
+    }
+  } else {
+    selEl.innerHTML = `Selected <strong>${escapeHtml(next.name)}</strong>`;
+    setEmpty(mapsEl, "frame", null, "Select a text layer or a row.");
+  }
+
   if (next.canRepeat && next.mappings.length > 0) {
     const rows = next.mappings
       .map((mapping) => {
-        const field = mapping.field ? escapeHtml(mapping.field) : "—";
+        const field = mapping.field ? escapeHtml(mapping.field) : "Not matched";
         const muted = mapping.field ? "" : " muted";
         return `<tr><td>${escapeHtml(mapping.layerName)}</td><td><span class="field${muted}">${field}</span></td></tr>`;
       })
@@ -308,7 +359,8 @@ function arrayCount(path: string | null): number {
 
 function loadSample(id: SampleId): void {
   applyJson(getSampleText(id, "normal"), true);
-  setStatus(id, "ok");
+  const label = SAMPLE_OPTIONS.find((option) => option.id === id)?.label ?? id;
+  setStatus(`Loaded ${label}`, "ok");
 }
 
 for (const option of SAMPLE_OPTIONS) {
@@ -344,7 +396,7 @@ generateBtn.addEventListener("click", () => {
 clearBtn.addEventListener("click", () => {
   sampleEl.value = "";
   applyJson("", true);
-  setStatus("Cleared JSON");
+  setStatus("Content cleared");
 });
 
 window.onmessage = (event: MessageEvent<{ pluginMessage: PluginToUI }>) => {
@@ -360,7 +412,7 @@ window.onmessage = (event: MessageEvent<{ pluginMessage: PluginToUI }>) => {
       break;
     case "mapped":
       renderSelection(msg.selection, { mapped: true });
-      setStatus("Mapped", "ok");
+      setStatus("Layers matched", "ok");
       break;
     case "busy":
       setBusy(true, "Generating…");

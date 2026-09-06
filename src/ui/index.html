@@ -10,8 +10,8 @@
     <div class="app">
       <header class="toolbar">
         <div class="brand">Payload</div>
-        <select id="sample" aria-label="Sample dataset">
-          <option value="">Samples</option>
+        <select id="sample" aria-label="Try a sample">
+          <option value="">Try a sample</option>
         </select>
       </header>
 
@@ -19,19 +19,34 @@
       <textarea
         id="editor"
         spellcheck="false"
-        placeholder="Paste JSON…"
+        placeholder="Paste JSON or pick a sample…"
       ></textarea>
       <div id="error" class="error" hidden></div>
       <div class="json-bar">
-        <div id="summary" class="summary"></div>
+        <div id="summary" class="summary hint">Paste or pick a sample</div>
         <button type="button" id="clear" class="outline" disabled>Clear content</button>
       </div>
 
-      <div id="tree" class="tree" role="tree"></div>
+      <div id="tree" class="tree" role="tree">
+        <div class="empty">
+          <i data-lucide="braces"></i>
+          <div class="empty-copy">
+            <strong>No content yet</strong>
+            <p>Paste JSON or pick a sample.</p>
+          </div>
+        </div>
+      </div>
 
       <section class="context">
-        <div id="sel" class="sel">Select a text layer or a row</div>
-        <div id="maps" class="maps"></div>
+        <div id="sel" class="sel">No selection</div>
+        <div id="maps" class="maps">
+          <div class="empty">
+            <i data-lucide="mouse-pointer-2"></i>
+            <div class="empty-copy">
+              <p>Add content, then select a row.</p>
+            </div>
+          </div>
+        </div>
         <div class="actions">
           <button type="button" id="auto-map" class="ghost" disabled>Auto-map</button>
           <button type="button" id="generate" class="primary" disabled>Generate rows</button>

@@ -123,12 +123,11 @@ export function flattenKeys(value: unknown, prefix = ""): string[] {
 
 export function parseJsonText(text: string): { ok: true; data: unknown } | { ok: false; error: string } {
   const trimmed = text.trim();
-  if (!trimmed) return { ok: false, error: "Paste JSON to get started." };
+  if (!trimmed) return { ok: false, error: "Paste JSON or pick a sample to get started." };
   try {
     return { ok: true, data: JSON.parse(trimmed) as unknown };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Invalid JSON";
-    return { ok: false, error: message.replace(/^JSON\.parse: /, "") };
+  } catch {
+    return { ok: false, error: "This JSON has a syntax error. Check commas, quotes, and brackets." };
   }
 }
 
@@ -230,16 +229,22 @@ export function summarizeJson(data: unknown): string {
   const arrays = findObjectArrays(data);
   if (arrays.length === 1) {
     const [only] = arrays;
-    const label = only.path === "[]" ? "items" : only.path.replace(/\[\]$/, "");
-    return `${label}[] · ${only.count}`;
+    const label = only.path === "[]" ? "items" : only.path.replace(/\[\]$/, "").split(".").pop();
+    return `${only.count} ${label}`;
   }
   if (arrays.length > 1) {
-    return arrays.map((item) => `${item.path.replace(/\[\]$/, "")}[] ${item.count}`).join(" · ");
+    return arrays
+      .map((item) => {
+        const label = item.path === "[]" ? "items" : item.path.replace(/\[\]$/, "").split(".").pop();
+        return `${item.count} ${label}`;
+      })
+      .join(" · ");
   }
   if (data && typeof data === "object" && !Array.isArray(data)) {
-    return `${Object.keys(data).length} fields`;
+    const count = Object.keys(data).length;
+    return `${count} ${count === 1 ? "field" : "fields"}`;
   }
-  return "JSON ready";
+  return "Content ready";
 }
 
 export function pickDefaultArrayPath(data: unknown): string | null {

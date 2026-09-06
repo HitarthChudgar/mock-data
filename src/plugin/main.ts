@@ -60,7 +60,8 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
       }
       case "bind-field": {
         const selection = await bindSelectedField(msg.path);
-        send({ type: "done", message: `Bound ${msg.path.replace("[]", "[0]")}`, selection });
+        const field = msg.path.replace(/\[\]/g, "").split(".").filter(Boolean).pop() ?? msg.path;
+        send({ type: "done", message: `Filled with ${field}`, selection });
         break;
       }
       case "preview-repeat": {
@@ -78,12 +79,12 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
       }
       case "populate": {
         const selection = await populateSelection();
-        send({ type: "done", message: "Populated", selection });
+        send({ type: "done", message: "Layers filled", selection });
         break;
       }
       case "clear": {
         const selection = clearSelection();
-        send({ type: "done", message: "Cleared mappings", selection });
+        send({ type: "done", message: "Mappings cleared", selection });
         break;
       }
       default:

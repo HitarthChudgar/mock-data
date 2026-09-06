@@ -303,24 +303,24 @@ export async function populateRow(row: SceneNode, item: unknown, bindings: Layer
 
 function requireData(): unknown {
   const data = readDocumentJson();
-  if (data == null) throw new Error("Paste valid JSON first.");
+  if (data == null) throw new Error("Add content first — paste JSON or pick a sample.");
   return data;
 }
 
 function requireSingle(): SceneNode {
   const nodes = figma.currentPage.selection;
-  if (nodes.length === 0) throw new Error("Select a layer first.");
-  if (nodes.length > 1) throw new Error("Select a single layer or row.");
+  if (nodes.length === 0) throw new Error("Select a layer on the canvas.");
+  if (nodes.length > 1) throw new Error("Select one layer or row at a time.");
   return nodes[0];
 }
 
 function parentOf(node: SceneNode): BaseNode & ChildrenMixin {
   const parent = node.parent;
   if (!parent || !("insertChild" in parent)) {
-    throw new Error("This layer has no parent to place rows in.");
+    throw new Error("This layer isn’t inside a frame, so new rows can’t be added.");
   }
   if (parent.type === "INSTANCE") {
-    throw new Error("Cannot generate rows inside a component instance.");
+    throw new Error("Detach this instance, or generate from a frame instead.");
   }
   return parent;
 }
@@ -392,7 +392,7 @@ function spaceGeneratedRows(template: SceneNode, parent: BaseNode & ChildrenMixi
 
 function duplicateRow(template: SceneNode, parent: BaseNode & ChildrenMixin, index: number): SceneNode {
   if (template.type === "COMPONENT" || template.type === "COMPONENT_SET") {
-    throw new Error("Select a frame or instance, not a main component.");
+    throw new Error("Select a frame or instance — not the main component.");
   }
   const copy = template.clone();
   copy.visible = false;
@@ -406,7 +406,7 @@ function duplicateRow(template: SceneNode, parent: BaseNode & ChildrenMixin, ind
 export async function bindSelectedField(path: string): Promise<SelectionInfo> {
   const node = requireSingle();
   if (node.type !== "TEXT") {
-    throw new Error("Select a text layer to bind a field.");
+    throw new Error("Select a text layer to fill it.");
   }
   const data = requireData();
   const concrete = concretizePath(path);
@@ -423,7 +423,7 @@ function resolveTemplate(node: SceneNode): SceneNode {
       const template = parent.children.find((child) => child.id === payload.templateId);
       if (template) return template;
     }
-    throw new Error("Select the first row — this one was generated.");
+    throw new Error("Select the original row to update the list.");
   }
   return node;
 }
@@ -434,7 +434,7 @@ function resolveArrayPath(requested: string | undefined, template: SceneNode, da
   if (payload?.kind === "repeat-template") return payload.arrayPath;
   const fromData = getDefaultArrayPath(data);
   if (fromData) return fromData;
-  throw new Error("Click an array in the tree, like investors[].");
+  throw new Error("Click a list in your content, like investors.");
 }
 
 function getDefaultArrayPath(data: unknown): string | null {
@@ -443,21 +443,21 @@ function getDefaultArrayPath(data: unknown): string | null {
 
 function firstItem(data: unknown, arrayPath: string): unknown {
   const items = getArrayAtPath(data, arrayPath);
-  if (!items) throw new Error(`No array at ${arrayPath || "root"}.`);
+  if (!items) throw new Error(`No list found at ${arrayPath || "root"}.`);
   return items[0] ?? {};
 }
 
 export async function previewRepeat(arrayPath: string): Promise<SelectionInfo> {
   const node = resolveTemplate(resolveRepeatTarget(requireSingle()));
   if (!REPEATABLE.has(node.type)) {
-    throw new Error("Select a row or frame to map.");
+    throw new Error("Select a row or frame to match layers.");
   }
   const data = requireData();
   const path = resolveArrayPath(arrayPath, node, data);
   const item = firstItem(data, path);
   const bindings = autoMap(node, item, { rename: true, arrayPath: path });
   if (bindings.length === 0) {
-    throw new Error("This row has no text layers to fill.");
+    throw new Error("This row doesn’t have any text layers to fill.");
   }
   writePayload(node, { v: 1, kind: "repeat-template", arrayPath: path, bindings });
   await populateRow(node, item, bindings);
@@ -472,20 +472,20 @@ export async function generateRows(arrayPath?: string): Promise<{
 }> {
   const node = resolveTemplate(resolveRepeatTarget(requireSingle()));
   if (!REPEATABLE.has(node.type) && node.type !== "COMPONENT") {
-    throw new Error("Select the row you want to repeat.");
+    throw new Error("Select the row you want to fill.");
   }
   if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
-    throw new Error("Select a frame or instance, not a main component.");
+    throw new Error("Select a frame or instance — not the main component.");
   }
   const data = requireData();
   const path = resolveArrayPath(arrayPath, node, data);
   const records = getArrayAtPath(data, path);
-  if (!records) throw new Error(`No array at ${path || "root"}.`);
-  if (records.length === 0) throw new Error("That array is empty.");
+  if (!records) throw new Error(`No list found at ${path || "root"}.`);
+  if (records.length === 0) throw new Error("That list is empty.");
   const item = records[0];
   const maps = autoMap(node, item, { rename: true, arrayPath: path });
   if (maps.length === 0) {
-    throw new Error("This row has no text layers to fill.");
+    throw new Error("This row doesn’t have any text layers to fill.");
   }
   const result = await syncRepeat(node, data, path, maps);
   return { selection: inspectSelection(), ...result };
@@ -498,7 +498,7 @@ export async function syncRepeat(
   bindings: LayerBinding[],
 ): Promise<{ created: number; updated: number; removed: number }> {
   const items = getArrayAtPath(data, arrayPath);
-  if (!items) throw new Error(`No array at ${arrayPath || "root"}.`);
+  if (!items) throw new Error(`No list found at ${arrayPath || "root"}.`);
   const parent = parentOf(template);
 
   writePayload(template, { v: 1, kind: "repeat-template", arrayPath, bindings });
@@ -554,9 +554,9 @@ export async function populateSelection(): Promise<SelectionInfo> {
     return inspectSelection();
   }
   if (node.type === "TEXT") {
-    throw new Error("Click a JSON field to bind this text layer.");
+    throw new Error("Click a field in the list to fill this text layer.");
   }
-  throw new Error("Nothing mapped on this selection yet.");
+  throw new Error("Match layers first, then generate.");
 }
 
 export function clearSelection(): SelectionInfo {

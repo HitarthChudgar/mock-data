@@ -112,6 +112,10 @@ button:focus-visible {
   color: var(--figma-color-text-secondary);
 }
 
+.summary.hint {
+  color: var(--figma-color-text-tertiary);
+}
+
 .tree {
   flex: 1 1 auto;
   min-height: 80px;
@@ -119,6 +123,45 @@ button:focus-visible {
   padding: 2px 6px 8px;
   border-top: 1px solid var(--figma-color-border);
   border-bottom: 1px solid var(--figma-color-border);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 20px 10px;
+  color: var(--figma-color-text-tertiary);
+}
+
+.empty .icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: var(--figma-color-icon-secondary);
+}
+
+.empty-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.empty strong {
+  color: var(--figma-color-text-secondary);
+  font-weight: 500;
+}
+
+.empty p {
+  margin: 0;
+}
+
+.maps .empty {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
 }
 
 .row {

@@ -61,12 +61,13 @@ function currentArrayPath(): string | null {
   return null;
 }
 
-function setEmpty(el: HTMLElement, icon: LucideName, title: string | null, hint: string): void {
+function setEmpty(el: HTMLElement, icon: LucideName, title: string | null, hint: string | null): void {
   const heading = title ? `<strong>${escapeHtml(title)}</strong>` : "";
+  const body = hint ? `<p>${escapeHtml(hint)}</p>` : "";
   el.innerHTML = `
     <div class="empty">
       <i data-lucide="${icon}"></i>
-      <div class="empty-copy">${heading}<p>${escapeHtml(hint)}</p></div>
+      <div class="empty-copy">${heading}${body}</div>
     </div>
   `;
   paintIcons(el);
@@ -88,8 +89,8 @@ function applyJson(text: string, persist: boolean): void {
     editor.classList.remove("invalid");
     errorEl.hidden = true;
     errorEl.textContent = "";
-    summaryEl.textContent = "Paste or pick a sample";
-    summaryEl.classList.add("hint");
+    summaryEl.textContent = "";
+    summaryEl.classList.remove("hint");
     if (persist) post({ type: "set-json", json: "" });
     refreshView();
     return;
@@ -269,7 +270,7 @@ function renderSelection(next: SelectionInfo, options: { mapped?: boolean } = {}
   mapsEl.innerHTML = "";
 
   if (next.empty) {
-    selEl.innerHTML = "No selection";
+    selEl.innerHTML = "";
     if (!data) setEmpty(mapsEl, "mouse-pointer-2", null, "Add content, then select a row.");
     else setEmpty(mapsEl, "mouse-pointer-2", null, "Select a row to fill.");
   } else if (next.nodeType === "text") {

@@ -125,6 +125,17 @@ button:focus-visible {
   border-bottom: 1px solid var(--figma-color-border);
 }
 
+.tree:has(> .empty) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tree .empty {
+  align-items: center;
+  text-align: center;
+}
+
 .empty {
   display: flex;
   flex-direction: column;
@@ -240,6 +251,11 @@ button:focus-visible {
 .sel {
   color: var(--figma-color-text-secondary);
   margin-bottom: 6px;
+}
+
+.sel:empty {
+  display: none;
+  margin: 0;
 }
 
 .sel strong {

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      /* INJECT_CSS */
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="toolbar">
+        <div class="brand">Payload</div>
+        <select id="sample" aria-label="Sample dataset">
+          <option value="">Samples</option>
+        </select>
+      </header>
+
+      <label class="sr-only" for="editor">JSON</label>
+      <textarea
+        id="editor"
+        spellcheck="false"
+        placeholder="Paste JSON…"
+      ></textarea>
+      <div id="error" class="error" hidden></div>
+      <div class="json-bar">
+        <div id="summary" class="summary"></div>
+        <button type="button" id="clear" class="outline" disabled>Clear content</button>
+      </div>
+
+      <div id="tree" class="tree" role="tree"></div>
+
+      <section class="context">
+        <div id="sel" class="sel">Select a text layer or a row</div>
+        <div id="maps" class="maps"></div>
+        <div class="actions">
+          <button type="button" id="auto-map" class="ghost" disabled>Auto-map</button>
+          <button type="button" id="generate" class="primary" disabled>Generate rows</button>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span id="status" class="status" role="status" aria-live="polite"></span>
+      </footer>
+    </div>
+    <script>
+      // INJECT_JS
+    </script>
+  </body>
+</html>

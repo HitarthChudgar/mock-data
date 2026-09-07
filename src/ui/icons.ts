@@ -1,5 +1,6 @@
 import {
   Braces,
+  ChevronDown,
   CircleAlert,
   Copy,
   createIcons,
@@ -12,6 +13,7 @@ import {
 
 const icons = {
   Braces,
+  ChevronDown,
   CircleAlert,
   Copy,
   Frame,
@@ -21,7 +23,16 @@ const icons = {
   WandSparkles,
 };
 
-export type LucideName = "braces" | "circle-alert" | "copy" | "frame" | "mouse-pointer-2" | "rows-3" | "type" | "wand-sparkles";
+export type LucideName =
+  | "braces"
+  | "chevron-down"
+  | "circle-alert"
+  | "copy"
+  | "frame"
+  | "mouse-pointer-2"
+  | "rows-3"
+  | "type"
+  | "wand-sparkles";
 
 export function paintIcons(root: HTMLElement): void {
   createIcons({

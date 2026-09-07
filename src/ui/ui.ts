@@ -334,6 +334,7 @@ function setBusy(next: boolean, label = "Generating…"): void {
     generateBtn.innerHTML = `<span class="spinner" aria-hidden="true"></span>${label}`;
     autoMapBtn.disabled = true;
     clearBtn.disabled = true;
+    clearBtn.hidden = !editor.value.trim();
     return;
   }
   updateActions();
@@ -345,7 +346,9 @@ function updateActions(): void {
   const mapped = selection?.mappings.some((item) => item.field) ?? false;
   autoMapBtn.disabled = !(selection?.canRepeat && data);
   generateBtn.disabled = !(selection?.canRepeat && data && arrayPath && (mapped || selection.textLayers.length > 0));
-  clearBtn.disabled = !editor.value.trim();
+  const hasContent = Boolean(editor.value.trim());
+  clearBtn.hidden = !hasContent;
+  clearBtn.disabled = !hasContent;
 
   const count = arrayCount(arrayPath);
   if (selection?.isTemplate && count) generateBtn.textContent = `Update ${count} rows`;
@@ -432,4 +435,5 @@ window.onmessage = (event: MessageEvent<{ pluginMessage: PluginToUI }>) => {
   }
 };
 
+paintIcons(document.body);
 post({ type: "ready" });

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8" />
@@ -12,9 +12,12 @@
   <div class="app">
     <header class="toolbar">
       <div class="brand">Payload</div>
-      <select id="sample" aria-label="Try a sample">
-        <option value="">Try a sample</option>
-      </select>
+      <div class="select-wrap">
+        <select id="sample" aria-label="Try a sample">
+          <option value="">Try a sample</option>
+        </select>
+        <i data-lucide="chevron-down"></i>
+      </div>
     </header>
 
     <label class="sr-only" for="editor">JSON</label>
@@ -22,7 +25,7 @@
     <div id="error" class="error" hidden></div>
     <div class="json-bar">
       <div id="summary" class="summary"></div>
-      <button type="button" id="clear" class="outline" disabled>Clear content</button>
+      <button type="button" id="clear" class="outline" hidden>Clear content</button>
     </div>
 
     <div id="tree" class="tree" role="tree">

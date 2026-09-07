@@ -291,8 +291,7 @@ function renderSelection(next: SelectionInfo, options: { mapped?: boolean } = {}
     if (next.mappings.length > 0) {
       selEl.innerHTML = `Identified mappings · <strong>${count}</strong>`;
     } else if (!data) {
-      selEl.innerHTML = "Row selected";
-      setEmpty(mapsEl, "wand-sparkles", null, "Add content, then Auto-map.");
+      selEl.innerHTML = "";
     } else {
       selEl.innerHTML = "Ready to map";
       setEmpty(mapsEl, "wand-sparkles", null, "Auto-map matches layers to fields.");

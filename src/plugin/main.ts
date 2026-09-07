@@ -8,7 +8,7 @@ import {
   populateSelection,
   previewRepeat,
 } from "./apply";
-import { readDocumentJsonText, writeDocumentJsonText } from "./data";
+import { writeDocumentJsonText } from "./data";
 
 figma.skipInvisibleInstanceChildren = false;
 
@@ -37,9 +37,10 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
   try {
     switch (msg.type) {
       case "ready":
+        writeDocumentJsonText("");
         send({
           type: "init",
-          json: readDocumentJsonText(),
+          json: "",
           selection: inspectSelection(),
         });
         break;
@@ -98,4 +99,8 @@ figma.ui.onmessage = async (msg: UIToPlugin) => {
 
 figma.on("selectionchange", () => {
   send({ type: "selection", selection: inspectSelection() });
+});
+
+figma.on("close", () => {
+  writeDocumentJsonText("");
 });

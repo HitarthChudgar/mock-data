@@ -133,6 +133,10 @@ select {
   gap: 8px;
 }
 
+.json-bar:has(> .summary:empty):has(> #clear[hidden]) {
+  display: none;
+}
+
 .summary {
   flex: 1;
   min-width: 0;

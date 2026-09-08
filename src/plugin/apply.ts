@@ -327,6 +327,31 @@ function parentOf(node: SceneNode): BaseNode & ChildrenMixin {
 
 const ROW_GAP = 16;
 
+function siblingRows(template: SceneNode): SceneNode[] {
+  const parent = template.parent;
+  if (!parent || !("children" in parent) || parent.type === "PAGE" || parent.type === "DOCUMENT") {
+    return [template];
+  }
+  const frames = rowChildren(parent);
+  if (!frames.some((row) => row.id === template.id)) return [template];
+  const count = textCount(template);
+  const peers = frames.filter((row) => textCount(row) === count);
+  if (peers.length < 2) return [template];
+  if (!looksLikeList(peers) && !similarTextCounts(peers) && !isRepeatingList(parent)) {
+    return [template];
+  }
+  return [...peers].sort((a, b) => parent.children.indexOf(a) - parent.children.indexOf(b));
+}
+
+function shouldFillExisting(template: SceneNode): boolean {
+  const payload = readPayload(template);
+  if (payload?.kind === "repeat-template" && payload.fillExisting) return true;
+  const parent = template.parent;
+  if (!parent || !("children" in parent)) return false;
+  const managed = findInstances(parent, template.id).length > 0;
+  return siblingRows(template).length >= 2 && !managed;
+}
+
 function findInstances(parent: BaseNode & ChildrenMixin, templateId: string): SceneNode[] {
   return parent.children.filter((child) => {
     const payload = readPayload(child);
@@ -417,15 +442,13 @@ export async function bindSelectedField(path: string): Promise<SelectionInfo> {
 
 function resolveTemplate(node: SceneNode): SceneNode {
   const payload = readPayload(node);
-  if (payload?.kind === "repeat-instance") {
-    const parent = node.parent;
-    if (parent && "children" in parent) {
-      const template = parent.children.find((child) => child.id === payload.templateId);
-      if (template) return template;
-    }
-    throw new Error("Select the original row to update the list.");
+  if (payload?.kind !== "repeat-instance") return node;
+  const parent = node.parent;
+  if (parent && "children" in parent) {
+    const template = parent.children.find((child) => child.id === payload.templateId);
+    if (template) return template;
   }
-  return node;
+  return siblingRows(node)[0] ?? node;
 }
 
 function resolveArrayPath(requested: string | undefined, template: SceneNode, data: unknown): string {
@@ -482,13 +505,48 @@ export async function generateRows(arrayPath?: string): Promise<{
   const records = getArrayAtPath(data, path);
   if (!records) throw new Error(`No list found at ${path || "root"}.`);
   if (records.length === 0) throw new Error("That list is empty.");
+  const fill = shouldFillExisting(node);
+  const target = fill ? siblingRows(node)[0] ?? node : node;
   const item = records[0];
-  const maps = autoMap(node, item, { rename: true, arrayPath: path });
+  const maps = autoMap(target, item, { rename: true, arrayPath: path });
   if (maps.length === 0) {
     throw new Error("This row doesn’t have any text layers to fill.");
   }
-  const result = await syncRepeat(node, data, path, maps);
+  const result = fill
+    ? await fillExistingRows(target, data, path, maps)
+    : await syncRepeat(target, data, path, maps);
   return { selection: inspectSelection(), ...result };
+}
+
+export async function fillExistingRows(
+  template: SceneNode,
+  data: unknown,
+  arrayPath: string,
+  bindings: LayerBinding[],
+): Promise<{ created: number; updated: number; removed: number }> {
+  const items = getArrayAtPath(data, arrayPath);
+  if (!items) throw new Error(`No list found at ${arrayPath || "root"}.`);
+  const rows = siblingRows(template);
+  const origin = rows[0] ?? template;
+  let updated = 0;
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const item = items[i];
+    if (item === undefined) break;
+    const row = rows[i];
+    const maps = i === 0 ? bindings : autoMap(row, item, { rename: true, arrayPath });
+    if (maps.length === 0) continue;
+    if (i === 0) {
+      writePayload(row, { v: 1, kind: "repeat-template", arrayPath, bindings: maps, fillExisting: true });
+    } else {
+      writePayload(row, { v: 1, kind: "repeat-instance", templateId: origin.id, index: i });
+    }
+    await populateRow(row, item, maps);
+    updated += 1;
+  }
+
+  figma.viewport.scrollAndZoomIntoView(rows);
+  return { created: 0, updated, removed: 0 };
 }
 
 export async function syncRepeat(
@@ -550,7 +608,11 @@ export async function populateSelection(): Promise<SelectionInfo> {
     return inspectSelection();
   }
   if (payload?.kind === "repeat-template") {
-    await syncRepeat(node, data, payload.arrayPath, payload.bindings);
+    if (payload.fillExisting || shouldFillExisting(node)) {
+      await fillExistingRows(node, data, payload.arrayPath, payload.bindings);
+    } else {
+      await syncRepeat(node, data, payload.arrayPath, payload.bindings);
+    }
     return inspectSelection();
   }
   if (node.type === "TEXT") {
@@ -595,6 +657,8 @@ export function inspectSelection(): SelectionInfo {
       textLayers: [],
       mappings: [],
       canRepeat: false,
+      fillExisting: false,
+      existingRowCount: 0,
     };
   }
 
@@ -609,22 +673,21 @@ export function inspectSelection(): SelectionInfo {
   }));
 
   let mappings: MappingPreview[] = [];
-  let arrayPath: string | null = payload?.kind === "repeat-template" ? payload.arrayPath : null;
+  let arrayPath: string | null = null;
   const template = payload?.kind === "repeat-instance" ? resolveTemplateSafe(node) : node;
   const templatePayload = template ? readPayload(template) : null;
+  const mapRoot = template ?? node;
 
-  if (template && templatePayload?.kind === "repeat-template" && data) {
-    arrayPath = templatePayload.arrayPath;
-    const item = getArrayAtPath(data, templatePayload.arrayPath)?.[0] ?? {};
-    mappings = mappingPreviews(template, item, templatePayload.bindings);
-  } else if (canRepeat && data) {
-    const guessed = getDefaultArrayPath(data);
+  if (canRepeat && data) {
+    const storedPath = templatePayload?.kind === "repeat-template" ? templatePayload.arrayPath : null;
+    const storedOk = Boolean(storedPath && getArrayAtPath(data, storedPath));
+    const guessed = storedOk ? storedPath : getDefaultArrayPath(data);
     if (guessed) {
       const item = getArrayAtPath(data, guessed)?.[0] ?? {};
-      mappings = mappingPreviews(node, item, autoMap(node, item, { rename: false }));
-      arrayPath = arrayPath ?? guessed;
-    } else if (data && typeof data === "object" && !Array.isArray(data)) {
-      mappings = mappingPreviews(node, data, autoMap(node, data, { rename: false }));
+      mappings = mappingPreviews(mapRoot, item, autoMap(mapRoot, item, { rename: false }));
+      arrayPath = guessed;
+    } else if (typeof data === "object" && !Array.isArray(data)) {
+      mappings = mappingPreviews(mapRoot, data, autoMap(mapRoot, data, { rename: false }));
     }
   }
 
@@ -643,19 +706,17 @@ export function inspectSelection(): SelectionInfo {
     type: node.type,
     nodeType: selected.type === "TEXT" ? "text" : canRepeat ? "repeatable" : "other",
     boundPath,
-    isTemplate: payload?.kind === "repeat-template",
+    isTemplate: templatePayload?.kind === "repeat-template" || payload?.kind === "repeat-template",
     isInstance: payload?.kind === "repeat-instance",
     arrayPath,
     textLayers,
     mappings,
     canRepeat,
+    fillExisting: canRepeat && shouldFillExisting(mapRoot),
+    existingRowCount: canRepeat ? siblingRows(mapRoot).length : 0,
   };
 }
 
 function resolveTemplateSafe(node: SceneNode): SceneNode | null {
-  try {
-    return resolveTemplate(node);
-  } catch {
-    return null;
-  }
+  return resolveTemplate(node);
 }

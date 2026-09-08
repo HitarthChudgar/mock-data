@@ -25,7 +25,7 @@ function send(message: PluginToUI): void {
 
 function formatResult(created: number, updated: number, removed: number): string {
   if (created && !removed && created === updated - 1) return `Generated ${updated} rows`;
-  if (!created && !removed && updated) return `Updated ${updated} ${updated === 1 ? "layer" : "rows"}`;
+  if (!created && !removed && updated) return `Filled ${updated} ${updated === 1 ? "row" : "rows"}`;
   const parts: string[] = [];
   if (created) parts.push(`${created} added`);
   if (removed) parts.push(`${removed} removed`);

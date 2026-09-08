@@ -2,7 +2,6 @@ import {
   Braces,
   ChevronDown,
   CircleAlert,
-  Copy,
   createIcons,
   Frame,
   MousePointer2,
@@ -15,7 +14,6 @@ const icons = {
   Braces,
   ChevronDown,
   CircleAlert,
-  Copy,
   Frame,
   MousePointer2,
   Rows3,
@@ -27,7 +25,6 @@ export type LucideName =
   | "braces"
   | "chevron-down"
   | "circle-alert"
-  | "copy"
   | "frame"
   | "mouse-pointer-2"
   | "rows-3"

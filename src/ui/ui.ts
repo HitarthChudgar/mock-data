@@ -283,9 +283,6 @@ function renderSelection(next: SelectionInfo, options: { mapped?: boolean } = {}
     } else {
       setEmpty(mapsEl, "type", null, "Click a field to fill this layer.");
     }
-  } else if (next.isInstance) {
-    selEl.innerHTML = "Generated row";
-    setEmpty(mapsEl, "copy", null, "Select the original row to update all.");
   } else if (next.canRepeat) {
     const count = next.mappings.length || next.textLayers.length;
     if (next.mappings.length > 0) {
@@ -350,7 +347,9 @@ function updateActions(): void {
   clearBtn.disabled = !hasContent;
 
   const count = arrayCount(arrayPath);
-  if (selection?.isTemplate && count) generateBtn.textContent = `Update ${count} rows`;
+  if (selection?.fillExisting && selection.existingRowCount) {
+    generateBtn.textContent = `Fill ${selection.existingRowCount} ${selection.existingRowCount === 1 ? "row" : "rows"}`;
+  } else if (selection?.isTemplate && count) generateBtn.textContent = `Update ${count} rows`;
   else generateBtn.textContent = count ? `Generate ${count} rows` : "Generate rows";
 }
 
@@ -392,7 +391,7 @@ autoMapBtn.addEventListener("click", () => {
 
 generateBtn.addEventListener("click", () => {
   if (busy) return;
-  setBusy(true, "Generating…");
+  setBusy(true, selection?.fillExisting ? "Filling…" : "Generating…");
   post({ type: "generate", arrayPath: currentArrayPath() ?? undefined });
 });
 
@@ -418,7 +417,7 @@ window.onmessage = (event: MessageEvent<{ pluginMessage: PluginToUI }>) => {
       setStatus("Layers matched", "ok");
       break;
     case "busy":
-      setBusy(true, "Generating…");
+      setBusy(true, selection?.fillExisting ? "Filling…" : "Generating…");
       break;
     case "done":
       setBusy(false);

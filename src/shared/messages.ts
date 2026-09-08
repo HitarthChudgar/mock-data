@@ -31,6 +31,8 @@ export type SelectionInfo = {
   textLayers: { name: string; path: string }[];
   mappings: MappingPreview[];
   canRepeat: boolean;
+  fillExisting: boolean;
+  existingRowCount: number;
 };
 
 export type UIToPlugin =

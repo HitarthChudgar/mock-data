@@ -5,7 +5,7 @@ export const ROOT_JSON_KEY = "payload-json";
 
 export type NodePayload =
   | { v: 1; kind: "field"; path: string }
-  | { v: 1; kind: "repeat-template"; arrayPath: string; bindings: LayerBinding[] }
+  | { v: 1; kind: "repeat-template"; arrayPath: string; bindings: LayerBinding[]; fillExisting?: boolean }
   | { v: 1; kind: "repeat-instance"; templateId: string; index: number };
 
 export function readPayload(node: BaseNode): NodePayload | null {

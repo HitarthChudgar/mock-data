@@ -10,6 +10,8 @@ export type SampleId =
 export type LayerBinding = {
   layerPath: string;
   field: string;
+  kind?: "text" | "icon";
+  property?: string;
 };
 
 export type MappingPreview = {

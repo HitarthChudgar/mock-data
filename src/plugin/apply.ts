@@ -8,10 +8,11 @@ import {
   getAtPath,
   pickDefaultArrayPath,
 } from "../shared/json";
-import { isGenericLayerName, prettyFieldName, prettyRowName } from "../shared/match";
+import { isGenericLayerName, isIconField, normalize, prettyFieldName, prettyRowName } from "../shared/match";
 import {
   ancestorNames,
   clearPayload,
+  collectIconInstances,
   collectTextNodes,
   findByLayerPath,
   getLayerPath,
@@ -23,12 +24,12 @@ import {
 
 const REPEATABLE = new Set(["FRAME", "GROUP", "INSTANCE", "SECTION"]);
 
-function displayLayerName(root: SceneNode, text: TextNode): string {
-  const names = ancestorNames(root, text);
-  return names.find((name) => !isGenericLayerName(name)) ?? text.name;
+function displayLayerName(root: SceneNode, node: SceneNode): string {
+  const names = ancestorNames(root, node);
+  return names.find((name) => !isGenericLayerName(name)) ?? node.name;
 }
 
-function visualOrder(nodes: TextNode[]): TextNode[] {
+function visualOrderNodes<T extends SceneNode>(nodes: T[]): T[] {
   return [...nodes].sort((a, b) => {
     const ay = a.absoluteTransform[1][2];
     const ax = a.absoluteTransform[0][2];
@@ -37,6 +38,10 @@ function visualOrder(nodes: TextNode[]): TextNode[] {
     if (Math.abs(ay - by) > 6) return ay - by;
     return ax - bx;
   });
+}
+
+function visualOrder(nodes: TextNode[]): TextNode[] {
+  return visualOrderNodes(nodes);
 }
 
 function trySetName(node: BaseNode, name: string): void {
@@ -50,16 +55,17 @@ function trySetName(node: BaseNode, name: string): void {
 
 function renameMappedLayers(
   template: SceneNode,
-  assigned: { text: TextNode; field: string }[],
+  assigned: { node: SceneNode; field: string; kind: "text" | "icon" }[],
   arrayPath?: string,
 ): void {
   if (arrayPath && isGenericLayerName(template.name)) {
     trySetName(template, prettyRowName(arrayPath));
   }
-  for (const { text, field } of assigned) {
+  for (const { node, field, kind } of assigned) {
+    if (kind !== "text" || node.type !== "TEXT") continue;
     const pretty = prettyFieldName(field);
-    trySetName(text, pretty);
-    const parent = text.parent as BaseNode | null;
+    trySetName(node, pretty);
+    const parent = node.parent as BaseNode | null;
     if (
       parent &&
       parent !== template &&
@@ -68,7 +74,7 @@ function renameMappedLayers(
       "children" in parent
     ) {
       const nested = collectTextNodes(parent as SceneNode);
-      if (nested.length === 1 && nested[0].id === text.id && isGenericLayerName(parent.name)) {
+      if (nested.length === 1 && nested[0].id === node.id && isGenericLayerName(parent.name)) {
         trySetName(parent, pretty);
       }
     }
@@ -79,13 +85,30 @@ function visibleTexts(root: SceneNode): TextNode[] {
   return visualOrder(collectTextNodes(root));
 }
 
-function assignFields(template: SceneNode, item: unknown): { text: TextNode; field: string }[] {
+function visibleIcons(root: SceneNode): InstanceNode[] {
+  return visualOrderNodes(collectIconInstances(root));
+}
+
+type AssignedLayer = {
+  node: SceneNode;
+  field: string;
+  kind: "text" | "icon";
+};
+
+function assignFields(template: SceneNode, item: unknown): AssignedLayer[] {
   const fields = flattenKeys(item);
+  const textFields = fields.filter((field) => !isIconField(field));
+  const iconFields = fields.filter(isIconField);
   const texts = visibleTexts(template);
-  const limit = Math.min(texts.length, fields.length);
-  const assigned: { text: TextNode; field: string }[] = [];
-  for (let i = 0; i < limit; i += 1) {
-    assigned.push({ text: texts[i], field: fields[i] });
+  const icons = visibleIcons(template);
+  const assigned: AssignedLayer[] = [];
+  const textLimit = Math.min(texts.length, textFields.length);
+  for (let i = 0; i < textLimit; i += 1) {
+    assigned.push({ node: texts[i], field: textFields[i], kind: "text" });
+  }
+  const iconLimit = Math.min(icons.length, iconFields.length);
+  for (let i = 0; i < iconLimit; i += 1) {
+    assigned.push({ node: icons[i], field: iconFields[i], kind: "icon" });
   }
   return assigned;
 }
@@ -97,19 +120,26 @@ export function autoMap(
 ): LayerBinding[] {
   const assigned = assignFields(template, item);
   if (options.rename) renameMappedLayers(template, assigned, options.arrayPath);
-  return assigned.map(({ text, field }) => ({
-    layerPath: getLayerPath(template, text),
+  return assigned.map(({ node, field, kind }) => ({
+    layerPath: getLayerPath(template, node),
     field,
+    kind,
   }));
 }
 
 export function mappingPreviews(template: SceneNode, item: unknown, bindings: LayerBinding[]): MappingPreview[] {
   const byPath = new Map(bindings.map((binding) => [binding.layerPath, binding.field]));
-  return visibleTexts(template).map((text) => {
-    const layerPath = getLayerPath(template, text);
+  const includeIcons =
+    bindings.some((binding) => binding.kind === "icon") || flattenKeys(item).some(isIconField);
+  const layers = visualOrderNodes([
+    ...visibleTexts(template),
+    ...(includeIcons ? visibleIcons(template) : []),
+  ]);
+  return layers.map((node) => {
+    const layerPath = getLayerPath(template, node);
     const field = byPath.get(layerPath) ?? null;
     return {
-      layerName: displayLayerName(template, text),
+      layerName: displayLayerName(template, node),
       layerPath,
       field,
       preview: field ? formatPreview(getAtPath(item, field)) : "",
@@ -243,12 +273,151 @@ export async function populateField(node: TextNode, data: unknown, path: string)
   return setText(node, formatValue(value));
 }
 
+function parseVariantName(name: string): Record<string, string> {
+  if (!name.includes("=")) return { name };
+  const props: Record<string, string> = {};
+  for (const part of name.split(",")) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    const key = part.slice(0, eq).trim();
+    const value = part.slice(eq + 1).trim();
+    if (key) props[key] = value;
+  }
+  return props;
+}
+
+function iconNameKeys(name: string): string[] {
+  const trimmed = name.trim();
+  const compact = normalize(trimmed);
+  const last = trimmed.split("/").pop()?.trim() ?? trimmed;
+  const keys = [trimmed, compact, last, normalize(last)];
+  return [...new Set(keys.filter(Boolean))];
+}
+
+function rememberComponent(map: Map<string, ComponentNode>, component: ComponentNode): void {
+  for (const key of iconNameKeys(component.name)) {
+    if (!map.has(key)) map.set(key, component);
+  }
+  for (const value of Object.values(parseVariantName(component.name))) {
+    for (const key of iconNameKeys(value)) {
+      if (!map.has(key)) map.set(key, component);
+    }
+  }
+}
+
+let componentIndex: Promise<Map<string, ComponentNode>> | null = null;
+let missingIconWarning = "";
+
+function resetComponentIndex(): void {
+  componentIndex = null;
+  missingIconWarning = "";
+}
+
+async function loadComponentIndex(): Promise<Map<string, ComponentNode>> {
+  if (!componentIndex) {
+    componentIndex = (async () => {
+      const map = new Map<string, ComponentNode>();
+      for (const page of figma.root.children) {
+        if (page.type !== "PAGE") continue;
+        try {
+          await page.loadAsync();
+        } catch {
+          // Page already available.
+        }
+        for (const component of page.findAllWithCriteria({ types: ["COMPONENT"] })) {
+          rememberComponent(map, component);
+        }
+        for (const set of page.findAllWithCriteria({ types: ["COMPONENT_SET"] })) {
+          const variant =
+            set.defaultVariant ??
+            set.children.find((child): child is ComponentNode => child.type === "COMPONENT");
+          if (!variant) continue;
+          rememberComponent(map, variant);
+          for (const key of iconNameKeys(set.name)) {
+            if (!map.has(key)) map.set(key, variant);
+          }
+        }
+      }
+      return map;
+    })();
+  }
+  return componentIndex;
+}
+
+async function findComponentByName(query: string): Promise<ComponentNode | null> {
+  const map = await loadComponentIndex();
+  for (const key of iconNameKeys(query)) {
+    const hit = map.get(key);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+async function swapToComponent(instance: InstanceNode, target: ComponentNode): Promise<boolean> {
+  try {
+    instance.swapComponent(target);
+    return true;
+  } catch {
+    const parent = instance.parent;
+    const property = instance.componentPropertyReferences?.mainComponent;
+    if (parent?.type !== "INSTANCE" || !property) return false;
+    try {
+      parent.setProperties({ [property]: target.id });
+      return true;
+    } catch {
+      try {
+        parent.setProperties({ [property]: target.key });
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+}
+
+async function applyIcon(instance: InstanceNode, value: unknown): Promise<boolean> {
+  const query = typeof value === "string" ? value.trim() : "";
+  if (!query) {
+    instance.visible = false;
+    return true;
+  }
+  instance.visible = true;
+  const target = await findComponentByName(query);
+  if (!target) {
+    if (!missingIconWarning) {
+      missingIconWarning = query;
+      figma.notify(`No component named “${query}” in this file.`);
+    }
+    return false;
+  }
+  try {
+    const current = await instance.getMainComponentAsync();
+    if (current?.id === target.id) return true;
+  } catch {
+    // Swap anyway.
+  }
+  return swapToComponent(instance, target);
+}
+
 export async function populateRow(row: SceneNode, item: unknown, bindings: LayerBinding[]): Promise<number> {
   let updated = 0;
+  const icons = visibleIcons(row);
+  let iconIndex = 0;
   for (const binding of bindings) {
+    const value = getAtPath(item, binding.field);
+    if (binding.kind === "icon") {
+      const node = findByLayerPath(row, binding.layerPath);
+      const instance =
+        node?.type === "INSTANCE" ? node : icons[iconIndex] ?? null;
+      iconIndex += 1;
+      if (!instance) continue;
+      const ok = await applyIcon(instance, value);
+      if (ok) updated += 1;
+      continue;
+    }
     const node = findByLayerPath(row, binding.layerPath);
     if (!node || node.type !== "TEXT") continue;
-    const ok = await setText(node, formatValue(getAtPath(item, binding.field)));
+    const ok = await setText(node, formatValue(value));
     if (ok) updated += 1;
   }
   return updated;
@@ -278,17 +447,6 @@ function selectedRepeatableRows(): SceneNode[] {
     rows.push(row);
   }
   return visualOrderNodes(rows);
-}
-
-function visualOrderNodes(nodes: SceneNode[]): SceneNode[] {
-  return [...nodes].sort((a, b) => {
-    const ay = a.absoluteTransform[1][2];
-    const ax = a.absoluteTransform[0][2];
-    const by = b.absoluteTransform[1][2];
-    const bx = b.absoluteTransform[0][2];
-    if (Math.abs(ay - by) > 6) return ay - by;
-    return ax - bx;
-  });
 }
 
 function parentOf(node: SceneNode): BaseNode & ChildrenMixin {
@@ -448,6 +606,7 @@ function firstItem(data: unknown, arrayPath: string): unknown {
 }
 
 export async function previewRepeat(arrayPath: string): Promise<SelectionInfo> {
+  resetComponentIndex();
   const explicit = selectedRepeatableRows();
   const node = explicit[0] ?? resolveTemplate(resolveRepeatTarget(requireSingle()));
   if (!REPEATABLE.has(node.type)) {
@@ -458,7 +617,7 @@ export async function previewRepeat(arrayPath: string): Promise<SelectionInfo> {
   const item = firstItem(data, path);
   const bindings = autoMap(node, item, { rename: true, arrayPath: path });
   if (bindings.length === 0) {
-    throw new Error("This row doesn’t have any text layers to fill.");
+    throw new Error("This row doesn’t have any layers to fill.");
   }
   writePayload(node, { v: 1, kind: "repeat-template", arrayPath: path, bindings });
   await populateRow(node, item, bindings);
@@ -471,6 +630,7 @@ export async function generateRows(arrayPath?: string): Promise<{
   updated: number;
   removed: number;
 }> {
+  resetComponentIndex();
   const explicit = selectedRepeatableRows();
   const node = explicit[0] ?? resolveTemplate(resolveRepeatTarget(requireSingle()));
   if (!REPEATABLE.has(node.type) && node.type !== "COMPONENT") {
@@ -489,7 +649,7 @@ export async function generateRows(arrayPath?: string): Promise<{
   const item = records[0];
   const maps = autoMap(target, item, { rename: true, arrayPath: path });
   if (maps.length === 0) {
-    throw new Error("This row doesn’t have any text layers to fill.");
+    throw new Error("This row doesn’t have any layers to fill.");
   }
   const result = fill
     ? await fillExistingRows(target, data, path, maps, explicit.length > 1 ? explicit : undefined)
@@ -580,6 +740,7 @@ export async function syncRepeat(
 }
 
 export async function populateSelection(): Promise<SelectionInfo> {
+  resetComponentIndex();
   const data = requireData();
   const explicit = selectedRepeatableRows();
   const node = explicit[0] ?? requireSingle();

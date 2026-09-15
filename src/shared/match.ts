@@ -42,6 +42,13 @@ export function isGenericLayerName(name: string): boolean {
   return GENERIC_LAYER.test(normalize(name));
 }
 
+export function isIconField(field: string): boolean {
+  return field.split(".").some((part) => {
+    const key = normalize(part);
+    return key === "icon" || key.startsWith("icon") || key.endsWith("icon");
+  });
+}
+
 export function prettyFieldName(field: string): string {
   const last = field.split(".").pop() ?? field;
   return last

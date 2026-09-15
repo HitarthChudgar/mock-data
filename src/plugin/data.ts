@@ -72,6 +72,55 @@ export function collectTextNodes(root: SceneNode): TextNode[] {
   return out;
 }
 
+function hasImageFill(node: SceneNode): boolean {
+  if ("fills" in node && Array.isArray(node.fills)) {
+    if (node.fills.some((fill) => fill.type === "IMAGE" && fill.visible !== false)) return true;
+  }
+  if ("children" in node) {
+    for (const child of node.children) {
+      if (isHidden(child)) continue;
+      if (hasImageFill(child as SceneNode)) return true;
+    }
+  }
+  return false;
+}
+
+function looksLikeIcon(node: InstanceNode): boolean {
+  const name = node.name.toLowerCase();
+  if (/(avatar|photo|image|thumb|logo|portrait)/.test(name)) return false;
+  if (collectTextNodes(node).length > 0) return false;
+  if (hasImageFill(node)) return false;
+  if (/(^|[^a-z])(icon|close)([^a-z]|$)/.test(name) || /-(line|fill|solid)$/.test(name)) return true;
+  if (node.width > 64 || node.height > 64) return false;
+  const min = Math.max(1, Math.min(node.width, node.height));
+  return Math.max(node.width, node.height) / min <= 1.75;
+}
+
+function isInside(parent: SceneNode, node: SceneNode): boolean {
+  let current = node.parent;
+  while (current) {
+    if (current.id === parent.id) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+export function collectIconInstances(root: SceneNode): InstanceNode[] {
+  if (root.type === "INSTANCE" && looksLikeIcon(root)) return [root];
+  const found: InstanceNode[] = [];
+  const visit = (node: BaseNode) => {
+    if (node !== root && isHidden(node)) return;
+    if (node !== root && node.type === "INSTANCE" && looksLikeIcon(node)) {
+      found.push(node);
+    }
+    if ("children" in node) {
+      for (const child of node.children) visit(child);
+    }
+  };
+  visit(root);
+  return found.filter((icon) => !found.some((other) => other !== icon && isInside(icon, other)));
+}
+
 export function ancestorNames(root: SceneNode, target: SceneNode): string[] {
   const names: string[] = [];
   let current: BaseNode = target;

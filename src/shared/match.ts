@@ -1,5 +1,14 @@
 const ALIAS_GROUPS = [
-  ["firm", "name", "investor", "holder", "institution", "organization", "org", "company"],
+  [
+    "firm",
+    "name",
+    "investor",
+    "holder",
+    "institution",
+    "organization",
+    "org",
+    "company",
+  ],
   ["ownership", "owned", "percent", "pct", "stake", "holding", "weight"],
   ["change", "delta", "chg", "qoq", "variation", "movement"],
   ["shares", "share", "units", "quantity", "qty"],
@@ -22,7 +31,8 @@ const ALIAS_GROUPS = [
   ["ircontact", "contact"],
 ];
 
-const GENERIC_LAYER = /^(text|layer|frame|group|rectangle|vector|ellipse|line|component|instance|autolayout|placeholder|label|value|heading|body|caption)\d*$/;
+const GENERIC_LAYER =
+  /^(text|layer|frame|group|rectangle|vector|ellipse|line|component|instance|autolayout|placeholder|label|value|heading|body|caption)\d*$/;
 
 export function normalize(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -45,7 +55,10 @@ export function prettyFieldName(field: string): string {
 
 export function prettyRowName(arrayPath: string): string {
   const key = arrayPath.replace(/\[\]$/, "").split(".").pop() ?? "Row";
-  const singular = key.length > 3 && key.endsWith("s") && !key.endsWith("ss") ? key.slice(0, -1) : key;
+  const singular =
+    key.length > 3 && key.endsWith("s") && !key.endsWith("ss")
+      ? key.slice(0, -1)
+      : key;
   return prettyFieldName(singular);
 }
 
@@ -86,12 +99,15 @@ export function matchScore(candidates: string[], field: string): number {
   const compactField = normalize(field.replace(/\./g, ""));
 
   let best = 0;
-  if (compactField && layerTokens.includes(compactField)) best = Math.max(best, 110);
+  if (compactField && layerTokens.includes(compactField))
+    best = Math.max(best, 110);
 
   for (const layer of layerTokens) {
     if (!layer) continue;
     if (layer === last) {
-      const parentHits = fieldTokens.slice(0, -1).filter((part) => layerTokens.includes(part)).length;
+      const parentHits = fieldTokens
+        .slice(0, -1)
+        .filter((part) => layerTokens.includes(part)).length;
       best = Math.max(best, 100 + parentHits * 8);
     }
     for (const fieldToken of fieldTokens) {
@@ -104,7 +120,10 @@ export function matchScore(candidates: string[], field: string): number {
   return best;
 }
 
-export function pickField(candidates: string[], fields: string[]): { field: string; score: number } | null {
+export function pickField(
+  candidates: string[],
+  fields: string[],
+): { field: string; score: number } | null {
   let best: { field: string; score: number } | null = null;
   for (const field of fields) {
     const score = matchScore(candidates, field);

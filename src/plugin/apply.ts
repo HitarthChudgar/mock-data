@@ -8,7 +8,7 @@ import {
   getAtPath,
   pickDefaultArrayPath,
 } from "../shared/json";
-import { isGenericLayerName, matchScore, prettyFieldName, prettyRowName } from "../shared/match";
+import { isGenericLayerName, prettyFieldName, prettyRowName } from "../shared/match";
 import {
   ancestorNames,
   clearPayload,
@@ -22,15 +22,6 @@ import {
 } from "./data";
 
 const REPEATABLE = new Set(["FRAME", "GROUP", "INSTANCE", "SECTION"]);
-
-function layerCandidates(root: SceneNode, text: TextNode): string[] {
-  const names = ancestorNames(root, text);
-  const path = getLayerPath(root, text);
-  const fromPath = path.split("/").map((part) => part.replace(/#\d+$/, ""));
-  const content = text.characters.trim();
-  const extras = content.length > 0 && content.length <= 32 ? [content] : [];
-  return [...names, ...fromPath, ...extras];
-}
 
 function displayLayerName(root: SceneNode, text: TextNode): string {
   const names = ancestorNames(root, text);
@@ -84,56 +75,18 @@ function renameMappedLayers(
   }
 }
 
+function visibleTexts(root: SceneNode): TextNode[] {
+  return visualOrder(collectTextNodes(root));
+}
+
 function assignFields(template: SceneNode, item: unknown): { text: TextNode; field: string }[] {
   const fields = flattenKeys(item);
-  const texts = visualOrder(collectTextNodes(template));
-  const usedFields = new Set<string>();
-  const usedNodes = new Set<string>();
+  const texts = visibleTexts(template);
+  const limit = Math.min(texts.length, fields.length);
   const assigned: { text: TextNode; field: string }[] = [];
-
-  const take = (text: TextNode, field: string) => {
-    if (usedNodes.has(text.id) || usedFields.has(field)) return;
-    usedNodes.add(text.id);
-    usedFields.add(field);
-    assigned.push({ text, field });
-  };
-
-  const scored: { text: TextNode; field: string; score: number }[] = [];
-  for (const text of texts) {
-    const candidates = layerCandidates(template, text);
-    for (const field of fields) {
-      const score = matchScore(candidates, field);
-      if (score >= 70) scored.push({ text, field, score });
-    }
-  }
-  scored.sort((a, b) => b.score - a.score);
-  for (const entry of scored) take(entry.text, entry.field);
-
-  for (const text of texts) {
-    if (usedNodes.has(text.id)) continue;
-    const content = text.characters.trim();
-    if (!content) continue;
-    for (const field of fields) {
-      if (usedFields.has(field)) continue;
-      if (content === formatValue(getAtPath(item, field))) {
-        take(text, field);
-        break;
-      }
-    }
-  }
-
-  const leftoverTexts = texts.filter((text) => !usedNodes.has(text.id));
-  const leftoverFields = fields.filter((field) => !usedFields.has(field));
-  const bindable =
-    leftoverTexts.length >= leftoverFields.length * 2 && leftoverFields.length > 0
-      ? leftoverTexts.filter((_, index) => index % 2 === 1).concat(leftoverTexts.filter((_, index) => index % 2 === 0))
-      : leftoverTexts;
-
-  const limit = Math.min(bindable.length, leftoverFields.length);
   for (let i = 0; i < limit; i += 1) {
-    take(bindable[i], leftoverFields[i]);
+    assigned.push({ text: texts[i], field: fields[i] });
   }
-
   return assigned;
 }
 
@@ -152,7 +105,7 @@ export function autoMap(
 
 export function mappingPreviews(template: SceneNode, item: unknown, bindings: LayerBinding[]): MappingPreview[] {
   const byPath = new Map(bindings.map((binding) => [binding.layerPath, binding.field]));
-  return collectTextNodes(template).map((text) => {
+  return visibleTexts(template).map((text) => {
     const layerPath = getLayerPath(template, text);
     const field = byPath.get(layerPath) ?? null;
     return {
@@ -310,8 +263,32 @@ function requireData(): unknown {
 function requireSingle(): SceneNode {
   const nodes = figma.currentPage.selection;
   if (nodes.length === 0) throw new Error("Select a layer on the canvas.");
-  if (nodes.length > 1) throw new Error("Select one layer or row at a time.");
   return nodes[0];
+}
+
+function selectedRepeatableRows(): SceneNode[] {
+  const seen = new Set<string>();
+  const rows: SceneNode[] = [];
+  for (const node of figma.currentPage.selection) {
+    const row = resolveTemplate(resolveRepeatTarget(node));
+    if (row.type === "COMPONENT" || row.type === "COMPONENT_SET") continue;
+    if (!REPEATABLE.has(row.type) || collectTextNodes(row).length === 0) continue;
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    rows.push(row);
+  }
+  return visualOrderNodes(rows);
+}
+
+function visualOrderNodes(nodes: SceneNode[]): SceneNode[] {
+  return [...nodes].sort((a, b) => {
+    const ay = a.absoluteTransform[1][2];
+    const ax = a.absoluteTransform[0][2];
+    const by = b.absoluteTransform[1][2];
+    const bx = b.absoluteTransform[0][2];
+    if (Math.abs(ay - by) > 6) return ay - by;
+    return ax - bx;
+  });
 }
 
 function parentOf(node: SceneNode): BaseNode & ChildrenMixin {
@@ -471,7 +448,8 @@ function firstItem(data: unknown, arrayPath: string): unknown {
 }
 
 export async function previewRepeat(arrayPath: string): Promise<SelectionInfo> {
-  const node = resolveTemplate(resolveRepeatTarget(requireSingle()));
+  const explicit = selectedRepeatableRows();
+  const node = explicit[0] ?? resolveTemplate(resolveRepeatTarget(requireSingle()));
   if (!REPEATABLE.has(node.type)) {
     throw new Error("Select a row or frame to match layers.");
   }
@@ -493,7 +471,8 @@ export async function generateRows(arrayPath?: string): Promise<{
   updated: number;
   removed: number;
 }> {
-  const node = resolveTemplate(resolveRepeatTarget(requireSingle()));
+  const explicit = selectedRepeatableRows();
+  const node = explicit[0] ?? resolveTemplate(resolveRepeatTarget(requireSingle()));
   if (!REPEATABLE.has(node.type) && node.type !== "COMPONENT") {
     throw new Error("Select the row you want to fill.");
   }
@@ -505,15 +484,15 @@ export async function generateRows(arrayPath?: string): Promise<{
   const records = getArrayAtPath(data, path);
   if (!records) throw new Error(`No list found at ${path || "root"}.`);
   if (records.length === 0) throw new Error("That list is empty.");
-  const fill = shouldFillExisting(node);
-  const target = fill ? siblingRows(node)[0] ?? node : node;
+  const fill = explicit.length > 1 || shouldFillExisting(node);
+  const target = fill ? explicit[0] ?? siblingRows(node)[0] ?? node : node;
   const item = records[0];
   const maps = autoMap(target, item, { rename: true, arrayPath: path });
   if (maps.length === 0) {
     throw new Error("This row doesn’t have any text layers to fill.");
   }
   const result = fill
-    ? await fillExistingRows(target, data, path, maps)
+    ? await fillExistingRows(target, data, path, maps, explicit.length > 1 ? explicit : undefined)
     : await syncRepeat(target, data, path, maps);
   return { selection: inspectSelection(), ...result };
 }
@@ -523,10 +502,11 @@ export async function fillExistingRows(
   data: unknown,
   arrayPath: string,
   bindings: LayerBinding[],
+  explicitRows?: SceneNode[],
 ): Promise<{ created: number; updated: number; removed: number }> {
   const items = getArrayAtPath(data, arrayPath);
   if (!items) throw new Error(`No list found at ${arrayPath || "root"}.`);
-  const rows = siblingRows(template);
+  const rows = explicitRows && explicitRows.length > 0 ? explicitRows : siblingRows(template);
   const origin = rows[0] ?? template;
   let updated = 0;
 
@@ -601,10 +581,17 @@ export async function syncRepeat(
 
 export async function populateSelection(): Promise<SelectionInfo> {
   const data = requireData();
-  const node = requireSingle();
+  const explicit = selectedRepeatableRows();
+  const node = explicit[0] ?? requireSingle();
   const payload = readPayload(node);
   if (node.type === "TEXT" && payload?.kind === "field") {
     await populateField(node, data, payload.path);
+    return inspectSelection();
+  }
+  if (explicit.length > 1) {
+    const path = resolveArrayPath(undefined, node, data);
+    const maps = autoMap(node, firstItem(data, path), { rename: true, arrayPath: path });
+    await fillExistingRows(node, data, path, maps, explicit);
     return inspectSelection();
   }
   if (payload?.kind === "repeat-template") {
@@ -662,12 +649,13 @@ export function inspectSelection(): SelectionInfo {
     };
   }
 
+  const explicit = selectedRepeatableRows();
   const selected = nodes[0];
-  const node = resolveRepeatTarget(selected);
+  const node = explicit[0] ?? resolveRepeatTarget(selected);
   const payload = readPayload(node);
   const data = readDocumentJson();
   const canRepeat = REPEATABLE.has(node.type) && collectTextNodes(node).length > 0;
-  const textLayers = collectTextNodes(node).map((text) => ({
+  const textLayers = visibleTexts(node).map((text) => ({
     name: displayLayerName(node, text),
     path: getLayerPath(node, text),
   }));
@@ -712,8 +700,8 @@ export function inspectSelection(): SelectionInfo {
     textLayers,
     mappings,
     canRepeat,
-    fillExisting: canRepeat && shouldFillExisting(mapRoot),
-    existingRowCount: canRepeat ? siblingRows(mapRoot).length : 0,
+    fillExisting: canRepeat && (explicit.length > 1 || shouldFillExisting(mapRoot)),
+    existingRowCount: canRepeat ? (explicit.length > 1 ? explicit.length : siblingRows(mapRoot).length) : 0,
   };
 }
 

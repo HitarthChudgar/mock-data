@@ -51,12 +51,24 @@ export function walk(node: BaseNode, visit: (node: BaseNode) => void): void {
   }
 }
 
+function isHidden(node: BaseNode): boolean {
+  return "visible" in node && node.visible === false;
+}
+
 export function collectTextNodes(root: SceneNode): TextNode[] {
-  if (root.type === "TEXT") return [root];
+  if (root.type === "TEXT") return isHidden(root) ? [] : [root];
   const out: TextNode[] = [];
-  walk(root, (node) => {
-    if (node.type === "TEXT") out.push(node);
-  });
+  const visit = (node: BaseNode) => {
+    if (node !== root && isHidden(node)) return;
+    if (node.type === "TEXT") {
+      out.push(node);
+      return;
+    }
+    if ("children" in node) {
+      for (const child of node.children) visit(child);
+    }
+  };
+  visit(root);
   return out;
 }
 
